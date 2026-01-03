@@ -9,3 +9,6 @@
 
 # Ignore figures if you regenerate them
 figs/*
+
+# macOS system files
+.DS_Store
