@@ -1,0 +1,493 @@
+---
+title: "Analysis_Web_Analytic"
+author: "Dawn Han"
+date: "2026-01-03"
+output: html_document
+
+---
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(
+  fig.width = 12,
+  fig.height = 8,
+  fig.path = "../figs/",
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{css echo = FALSE}
+body {
+  font-size: 16px;
+}
+```
+
+# Executive Summary
+
+#### Goal
+Evaluate the current website performance (bounce rate and engagement) and explore the factors contributing to poor performance, and identify actionable UX opportunities.
+
+#### Data
+Aggregated web analytics data (sessions, engagement, page performance, referrers, and affinity categories).
+
+#### Key Findings
+- Over 30% of sessions last under 10 seconds, but users who pass ~3 minutes show disproportionately high engagement. - Bounce behavior is polarized (0 vs. 1), suggesting distinct user journeys rather than uniformly poor UX. - Bounce rate varies strongly by landing page and traffic source, but not by affinity category.
+
+#### UX Implications
+- Early-session friction and expectation mismatch are the primary risks. 
+- Improvements should prioritize landing pages and referral alignment, not audience retargeting.
+
+
+
+#### Data Quality & Measurement Decisions
+- Before analysis, several decisions were made to ensure clarity and relevance:
+  
+- Sessions with missing or invalid duration values were removed, as these likely reflect logging errors.
+
+- Session duration was analyzed categorically, consistent with how it was reported by the analytics platform.
+
+- For affinity analyses, metrics (bounce rate and number of sessions) were aggregated at the level 1 affinity group (the broadest category) to simplify visualization. Bounce rates were calculated as session-weighted averages to prevent distortion from low-traffic pages, while the number of sessions was summed to reflect the total user engagement for each affinity group.
+
+- All analyses were performed on the processed datasets.
+
+
+
+# Step 1: Setup
+
+### Libraries Loaded: gggplot2, dplyr
+<details> <summary>Show code</summary>
+```{r results = FALSE}
+library(dplyr)
+library(ggplot2)
+```
+</details>
+
+### Data Imported: Web analytics datsets
+<details> <summary>Show code</summary>
+```{r results = FALSE}
+
+user_data <- read.csv("../data/processed_data/user_data_clean.csv")
+
+engagement_data <- read.csv("../data/processed_data/engagement_data_clean.csv")
+
+page_data <- read.csv("../data/processed_data/page_data_clean.csv")
+
+referrer_data <- read.csv("../data/processed_data/referrer_data_clean.csv")
+
+affinity_summarydata <- read.csv("../data/processed_data/affinity_summarydata_clean.csv")
+```
+</details> 
+
+### Global Plot-Formatting: Applied consistent styling and labeling
+<details> <summary>Show code</summary>
+```{r plotformat, results = FALSE}
+
+theme_ux <- theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    plot.subtitle = element_text(size = 18),
+    axis.title = element_text(size = 15),
+    axis.text  = element_text(size = 13),
+    panel.grid.minor = element_blank()
+  )
+  
+```
+</details> 
+<br> 
+<br> 
+
+# Step 2: Diagnosing The Current User Experience
+## User Engagement Overview
+
+<details> <summary>Show code for data preparation </summary>
+```{r }  
+  # Make sure Session Duration is ordered factor for better visualization
+  engagement_data$SessionDuration <- factor(
+    engagement_data$SessionDuration,
+    levels = c(
+      "0-10 seconds",
+      "11-30 seconds",
+      "31-60 seconds",
+      "61-180 seconds",
+      "181-600 seconds",
+      "601-1800 seconds",
+      "1801+ seconds"
+    ),ordered = TRUE
+  )
+
+# Determine a scaling factor so the line fits on the same plot
+scale_factor <- max(engagement_data$Sessions) / max(engagement_data$AvgViewPerSess)
+
+```
+</details>
+
+<details> <summary>Show code for the plot</summary>
+```{r eval=FALSE}
+ggplot(engagement_data, aes(x = SessionDuration)) +
+  geom_bar(aes(y = Sessions),
+           stat = "identity",
+           fill = "skyblue3",
+           alpha = 0.7) +
+  geom_line(aes(y = AvgViewPerSess * scale_factor, group = 1),
+            color = "red", size = 0.9, alpha = 0.8) +
+  geom_point(aes(y = AvgViewPerSess * scale_factor),
+             color = "red", size = 2) +
+  geom_text(
+    aes(y = AvgViewPerSess * scale_factor,
+        label = round(AvgViewPerSess, 1)),
+    vjust = -0.8, color = "red", size = 3, check_overlap = TRUE
+  ) +
+  scale_y_continuous(
+    name = "Number of Sessions",
+    sec.axis = sec_axis(~ . / scale_factor,
+                        name = "Number of Page Viewed (per Session)")
+  ) +
+  scale_x_discrete(labels = function(x) gsub("seconds", "sec", x)) +
+  labs(
+    title = "Longer Sessions Drive Higher Engagement",
+    subtitle = "Bar shows total number of sessions; red line shows average number of pages viewed per session",
+    x = "Session Duration"
+  ) +
+  theme_ux +
+  theme(
+    axis.title.y.right = element_text(color = "red"),
+    axis.text.y.right  = element_text(color = "red"),
+    axis.title.y.left = element_text(color = "skyblue4"),
+    axis.text.y.left  = element_text(color = "skyblue4")
+  )
+```
+</details>
+
+```{r echo=FALSE}
+# Draw the plot
+ggplot(engagement_data, aes(x = SessionDuration)) +
+  geom_bar(aes(y = Sessions),
+           stat = "identity",
+           fill = "skyblue3",
+           alpha = 0.7) +
+  geom_line(aes(y = AvgViewPerSess * scale_factor, group = 1),
+            color = "red", size = 0.9, alpha = 0.8) +
+  geom_point(aes(y = AvgViewPerSess * scale_factor),
+             color = "red", size = 2) +
+  geom_text(
+    aes(y = AvgViewPerSess * scale_factor,
+        label = round(AvgViewPerSess, 1)),
+    vjust = -0.8, color = "red", size = 3, check_overlap = TRUE
+  ) +
+  scale_y_continuous(
+    name = "Number of Sessions",
+    sec.axis = sec_axis(~ . / scale_factor,
+                        name = "Number of Page Viewed (per Session)")
+  ) +
+  scale_x_discrete(labels = function(x) gsub("seconds", "sec", x)) +
+  labs(
+    title = "Longer Sessions Drive Higher Engagement",
+    subtitle = "Bar shows total number of sessions; red line shows average number of pages viewed per session",
+    x = "Session Duration"
+  ) +
+  theme_ux +
+  theme(
+    axis.title.y.right = element_text(color = "red"),
+    axis.text.y.right  = element_text(color = "red"),
+    axis.title.y.left = element_text(color = "skyblue4"),
+    axis.text.y.left  = element_text(color = "skyblue4")
+  )
+```
+
+### Interpretation
+
+* Over 30% of sessions end within 10 seconds, indicating a substantial early-exit segment. 
+* However, once users remain on the site beyond approximately three minutes, engagement increases sharply, measured by page views per session.
+* This indicates a threshold effect: users either disengage immediately or become highly involved.
+
+
+### Insights
+
+- The ~3-minute threshold can guide desigin of engagement metrics.
+
+- Friction and expectation mismatch in the first moments of the session are likely contributors of early exit, but further analyses of bounce rate are warranted for more accurate recommendations. 
+
+<br> 
+<br> 
+
+## Bounce Behavior Overview
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+# Histogram with counts on bars
+ggplot(user_data, aes(x = `BounceRate`)) +
+  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,1,by=0.1))+
+  geom_text(
+    stat = "bin", 
+    binwidth = 0.1,
+    aes(label = ..count..), 
+    vjust = -0.5,
+    color = "black"
+  ) +
+  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
+  theme_ux
+```
+</details>
+
+```{r echo=FALSE}
+# Histogram with counts on bars
+ggplot(user_data, aes(x = `BounceRate`)) +
+  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,1,by=0.1))+
+  geom_text(
+    stat = "bin", 
+    binwidth = 0.1,
+    aes(label = ..count..), 
+    vjust = -0.5,
+    color = "black"
+  ) +
+  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
+  theme_ux
+```
+
+### Interpretation
+* The bounce rate distribution is highly polarized: ~65.8% of users never bounce, ~14.8% of users always bounce. 
+* No bouncing of majoraity users do not suggest poor overall UX.
+* Instead, it points to segmented behavior that may stem from
+<ol>
+  <li>quality or relevance issues on specific landing pages</li>
+  <li>mismatched traffic sources bringing in less interested or less relevant visitors</li>
+  <li>differences in user segments (e.g., interest). </li>
+</ol>
+
+### Recommendation
+* Focus further analysis on landing pages, referral sources, and affinity group for high bounce rates.
+
+<br> 
+<br> 
+
+# Step 3. Testing The Hypothesis
+## Hypothesis 1: Landing Page Issues
+<details>
+<summary>Show code for data preparation</summary>
+```{r }
+# Calculate cumulative x positions for variable-width columns (Marimekko)
+page_data <- page_data %>%
+  mutate(
+    Width = `Pageviews` / sum(`Pageviews`),        # width proportional to pageviews
+    xmin = lag(cumsum(Width), default = 0),        
+    xmax = cumsum(Width)                          
+  )
+
+# Max values for scaling secondary axis
+max_bounce <- max(page_data$`BounceRate`)
+max_load   <- max(page_data$`Avg.PageLoadTime.sec.`)
+
+```
+</details>
+
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+ggplot(page_data) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = BounceRate),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  geom_line(aes(x = (xmin + xmax)/2,
+                y = Avg.PageLoadTime.sec. * max_bounce / max_load),
+            color = "red", size = 0.9, alpha = 0.8) +
+  scale_y_continuous(
+    name = "Bounce Rate",
+    sec.axis = sec_axis(~ . * max_load / max_bounce,
+                        name = "Avg. Page Load Time (sec)")
+  ) +
+  scale_x_continuous(
+    breaks = (page_data$xmin + page_data$xmax)/2,
+    labels = page_data$Page
+  ) +
+  labs(
+    title = "Bounce Rate Varies Sharply by Page, Independent of Load Time",
+    subtitle = "Bar width reflects traffic volume; red line shows average load time",
+    x = "Pages (width proportional to traffic)",
+    y = "Bounce Rate"
+  )+
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1,
+                                   vjust = ifelse(seq_along(page_data$Page) %% 2 == 0, 1, 0.3)),
+        axis.title.y.right = element_text(color = "red"),
+        axis.text.y.right  = element_text(color = "red"))
+```
+</details>
+
+```{r echo=FALSE}
+ggplot(page_data) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = BounceRate),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  geom_line(aes(x = (xmin + xmax)/2,
+                y = Avg.PageLoadTime.sec. * max_bounce / max_load),
+            color = "red", size = 0.9, alpha = 0.8) +
+  scale_y_continuous(
+    name = "Bounce Rate",
+    sec.axis = sec_axis(~ . * max_load / max_bounce,
+                        name = "Avg. Page Load Time (sec)")
+  ) +
+  scale_x_continuous(
+    breaks = (page_data$xmin + page_data$xmax)/2,
+    labels = page_data$Page
+  ) +
+  labs(
+    title = "Bounce Rate Varies Sharply by Page, Independent of Load Time",
+    subtitle = "Bar width reflects traffic volume; red line shows average load time",
+    x = "Pages (width proportional to traffic)",
+    y = "Bounce Rate"
+  )+
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1,
+                                   vjust = ifelse(seq_along(page_data$Page) %% 2 == 0, 1, 0.3)),
+        axis.title.y.right = element_text(color = "red"),
+        axis.text.y.right  = element_text(color = "red"))
+```
+
+
+### Interpretation
+* Bounce rates vary substantially by page, but are not strongly associated with load time. 
+* This suggests content relevance or expectation mismatch as the primary issues, rather than performance.
+
+### Recommendation
+* Conduct qualitative evaluation (e.g., usability testing or heuristic review) on high-traffic, high-bounce landing pages (i.e., "Say" and "Finishing" pages.)
+
+<br> 
+<br> 
+
+# Hypothesis 2: Referral Source Mismatch
+<details>
+<summary>Show code for data preparation</summary>
+```{r}
+# Calculate cumulative x positions for variable-width columns (Marimekko)
+referrer_data <- referrer_data %>%
+  mutate(
+    Width = `Sessions` / sum(`Sessions`),
+    xmin = lag(cumsum(Width), default = 0),
+    xmax = cumsum(Width)
+  )
+```
+</details>
+
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+# Create the plot
+ggplot(referrer_data) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = BounceRate),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  scale_x_continuous(
+    breaks = (referrer_data$xmin + referrer_data$xmax)/2,
+    labels = referrer_data$Source
+  ) +
+  labs(
+    title = "Bounce Rates Differ Substantially Across Traffic Sources",
+    subtitle = "Bar width reflects session volume",
+    x = "Source (width proportional to sessions)",
+    y = "Bounce Rate"
+  ) +
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+</details>
+
+```{r echo = FALSE}
+# Create the plot
+ggplot(referrer_data) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = BounceRate),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  scale_x_continuous(
+    breaks = (referrer_data$xmin + referrer_data$xmax)/2,
+    labels = referrer_data$Source
+  ) +
+  labs(
+    title = "Bounce Rates Differ Substantially Across Traffic Sources",
+    subtitle = "Bar width reflects session volume",
+    x = "Source (width proportional to sessions)",
+    y = "Bounce Rate"
+  ) +
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+### Interpretation
+* Significant traffic comes from site.com, with higher bounce rate than other sources. 
+* Visitors from site.com may have misaligned expectations.
+
+### Recommendation
+* Review referral site content to ensure alignment with website offerings.
+* Consider reallocating acquisition efforts toward higher-engagement sources (e.g., Facebook, Outlook).
+
+<br> 
+<br> 
+
+# Hypothesis 3: Varied User Experience Across Affinity Categories
+<details>
+<summary>Show code for data preparation</summary>
+```{r }
+# Show Bounce rate by a broad affinity category
+
+# Calculate cumulative x positions for variable-width columns (Marimekko)
+affinity_summarydata<- affinity_summarydata %>%
+  mutate(
+    Width = `total_sessions` / sum(`total_sessions`),
+    xmin = lag(cumsum(Width), default = 0),
+    xmax = cumsum(Width)
+  )
+```
+</details>
+
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+ggplot(affinity_summarydata) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = `bounce_rate`),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  scale_x_continuous(
+    breaks = (affinity_summarydata$xmin + affinity_summarydata$xmax)/2,
+    labels = affinity_summarydata$AffinityLevel_1 ) +
+  labs(title = "Bounce Rates Show Limited Variation Across Affinity Groups", 
+       subtitle = "Bar width reflects session volume",
+       x = "Affinity",
+       y = "Bounce Rate")+
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+</details>
+
+```{r echo=FALSE}
+ggplot(affinity_summarydata) +
+  geom_rect(aes(xmin = xmin, xmax = xmax,
+                ymin = 0, ymax = `bounce_rate`),
+            fill = "skyblue3", color = "skyblue4", alpha = 0.7) +
+  scale_x_continuous(
+    breaks = (affinity_summarydata$xmin + affinity_summarydata$xmax)/2,
+    labels = affinity_summarydata$AffinityLevel_1 ) +
+  labs(title = "Bounce Rates Show Limited Variation Across Affinity Groups", 
+       subtitle = "Bar width reflects session volume",
+       x = "Affinity",
+       y = "Bounce Rate")+
+  theme_ux +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Interpretation
+* Bounce rates are consistent across affinity groups.
+* Indicates that the issue is not segment-sepcific, but rather linked to content and source interactions across multiple affinity groups.
+
+### Recommendation
+Investigate nteraction between landing page and referral source to test whether some pages are problematic particularly for specific traffic sources.
+
+<br>
+<br>
+
+# Conclusion
+
+* Key UX risks stem from early-session friction and expectation mismatch.
+
+* Actionable improvements include refining high-bounce landing pages, aligning referral sources, and using the 3-minute threshold to design more meaningful engagement metrics. 
