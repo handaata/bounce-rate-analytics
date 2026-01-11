@@ -26,28 +26,28 @@ body {
 # Executive Summary
 
 #### Goal
-Evaluate the current website performance (bounce rate and engagement) and explore the factors contributing to poor performance, and identify actionable UX opportunities.
+Evaluate current website performance by examining engagement, bounce behavior, and conversion outcomes, and identify actionable UX improvement opportunities.
 
 #### Data
-Aggregated web analytics data (sessions, engagement, page performance, referrers, and affinity categories).
+Aggregated web analytics data including number of sessions, session duraion, page-level performance, referral sources, and affinity categories.
 
 #### Key Findings
-- Over 30% of sessions last under 10 seconds, but users who pass ~3 minutes show disproportionately high engagement. - Bounce behavior is polarized (0 vs. 1), suggesting distinct user journeys rather than uniformly poor UX. - Bounce rate varies strongly by landing page and traffic source, but not by affinity category.
+- Over 30% of sessions end within the first 10 seconds, but sessions exceeding ~3 minutes show disproportionately high engagement (more page views). 
+- Conversion and bounce behaviors are highly polarized, suggesting distinct user journeys rather than uniformly poor UX. 
+- Bounce rate varies substantially by landing page and traffic source, but not by affinity category.
 
 #### UX Implications
-- Early-session friction and expectation mismatch are the primary risks. 
-- Improvements should prioritize landing pages and referral alignment, not audience retargeting.
+- Early-session friction, content relevance, and expectation mismatch are the primary risks. 
+- Improvements should prioritize landing page optimization (particularly for "say" and "finishing" pages) and referral alignment, rather than audience targeting.
 
 
 
 #### Data Quality & Measurement Decisions
-- Before analysis, several decisions were made to ensure clarity and relevance:
+- Before analysis, several decisions were made to ensure clarity and analytical validity:
   
 - Sessions with missing or invalid duration values were removed, as these likely reflect logging errors.
 
-- Session duration was analyzed categorically, consistent with how it was reported by the analytics platform.
-
-- For affinity analyses, metrics (bounce rate and number of sessions) were aggregated at the level 1 affinity group (the broadest category) to simplify visualization. Bounce rates were calculated as session-weighted averages to prevent distortion from low-traffic pages, while the number of sessions was summed to reflect the total user engagement for each affinity group.
+- For affinity analyses, metrics (bounce rate and number of sessions) were aggregated at the level 1 affinity group (the broadest category) to simplify visualization. Bounce rates were computed as session-weighted averages to prevent distortion from low-traffic pages, while the number of sessions was summed to reflect the total user engagement for each affinity group.
 
 - All analyses were performed on the processed datasets.
 
@@ -60,6 +60,9 @@ Aggregated web analytics data (sessions, engagement, page performance, referrers
 ```{r results = FALSE}
 library(dplyr)
 library(ggplot2)
+library(corrplot)
+library(interactions)
+
 ```
 </details>
 
@@ -79,7 +82,7 @@ affinity_summarydata <- read.csv("../data/processed_data/affinity_summarydata_cl
 ```
 </details> 
 
-### Global Plot-Formatting: Applied consistent styling and labeling
+### Global Plot-Formatting: Applied consistent styling
 <details> <summary>Show code</summary>
 ```{r plotformat, results = FALSE}
 
@@ -97,31 +100,44 @@ theme_ux <- theme_minimal(base_size = 14) +
 <br> 
 <br> 
 
-# Step 2: Diagnosing The Current User Experience
-## User Engagement Overview
+# Step 2: Understanding Engagement Patterns
+## Session Duration Overview
 
 <details> <summary>Show code for data preparation </summary>
 ```{r }  
-  # Make sure Session Duration is ordered factor for better visualization
-  engagement_data$SessionDuration <- factor(
-    engagement_data$SessionDuration,
-    levels = c(
-      "0-10 seconds",
-      "11-30 seconds",
-      "31-60 seconds",
-      "61-180 seconds",
-      "181-600 seconds",
-      "601-1800 seconds",
-      "1801+ seconds"
-    ),ordered = TRUE
-  )
+
+
+engagement_data <- engagement_data %>% 
+  mutate(
+    # Make Session Duration as an ordered factor for better visualization
+    SessionDuration = factor(
+      engagement_data$SessionDuration, 
+      levels = c("0-10 seconds", 
+                 "11-30 seconds", 
+                 "31-60 seconds",
+                 "61-180 seconds",
+                 "181-600 seconds",
+                 "601-1800 seconds",
+                 "1801+ seconds"
+                  ),
+      labels = c("0-10 seconds",
+                  "11-30 seconds", 
+                  "31-60 seconds",
+                  "1-3 minutes", 
+                  "3-10 minutes",
+                  "10-30 minutes",
+                  "30+ minutes"
+                  ),
+      ordered = TRUE
+      )
+    )
 
 # Determine a scaling factor so the line fits on the same plot
-scale_factor <- max(engagement_data$Sessions) / max(engagement_data$AvgViewPerSess)
+scale_factor <- max(engagement_data$Sessions)/
+  max(engagement_data$AvgViewPerSess)
 
 ```
 </details>
-
 <details> <summary>Show code for the plot</summary>
 ```{r eval=FALSE}
 ggplot(engagement_data, aes(x = SessionDuration)) +
@@ -195,21 +211,204 @@ ggplot(engagement_data, aes(x = SessionDuration)) +
   )
 ```
 
-### Interpretation
+#### Interpretation
 
 * Over 30% of sessions end within 10 seconds, indicating a substantial early-exit segment. 
-* However, once users remain on the site beyond approximately three minutes, engagement increases sharply, measured by page views per session.
-* This indicates a threshold effect: users either disengage immediately or become highly involved.
+* Among sessions that persist beyond the initial drop-off, 10–30 minutes is the most common duration. 
+* Once sessions lasted longer than 3 minutes, page views increase disproportionately. 
+* This sugggest a threshold effect: users either disengage almost immediately or become highly engaged.
 
+ 
+#### Insights
 
-### Insights
+* The ~3-minute threshold could guide design of engagement metrics. 
 
-- The ~3-minute threshold can guide desigin of engagement metrics.
+* Friction and expectation mismatch in the first moments of the session are likely contributors of early exit, but further analyses of bounce rate are warranted for more accurate recommendations. 
 
-- Friction and expectation mismatch in the first moments of the session are likely contributors of early exit, but further analyses of bounce rate are warranted for more accurate recommendations. 
+#### Limitations
+* Using the 3-minute threshold as engagement index needs further validation because page view might not be purely indicate of engagement, but instead, ineffective website usage. It will be valuable to examine whether greater page view leads to higher conversion rate. However, this can not be tested in the current data set.  
+
+* Relatedly, the longer session may mean ineffective usage. To rule out this possibility, upcoming analysis show whether session duration predicts conversion.
+
+</br>
+</br>
+
+### Relationship Between Session Duration and Conversion Rate
+<details> <summary>Show code for data preparation </summary>
+```{r }  
+# change units from seconds to minutes 
+user_data <- user_data %>%
+  mutate(Avg.SessionDuration.minutes. = 
+           `Avg.SessionDuration.seconds.`/60)
+```
+</details>
+
+<details> <summary>Show code for plot </summary>
+```{r eval=FALSE}
+# Scatter plot
+ggplot(user_data, 
+       aes(x=`Avg.SessionDuration.minutes.`,
+           y=GoalConversionRate)) +
+  geom_point(color = 'skyblue3', alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,100,by=10)) +
+  labs(title = "Users with Longer Sessions Reach the Conversion Goal More Often", x = "Avg. Session Duration (minutes)", y = "Conversion Rate") +
+  theme_ux
+```
+</details>
+
+```{r echo=FALSE}
+# Scatter plot
+ggplot(user_data, 
+       aes(x=`Avg.SessionDuration.minutes.`,
+           y=GoalConversionRate)) +
+  geom_point(color = 'skyblue3', alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,100,by=10)) +
+  labs(title = "Users with Longer Sessions Reach the Conversion Goal More Often", x = "Avg. Session Duration (minutes)", y = "Conversion Rate") +
+  theme_ux
+```
+
+#### Interpretation
+* Users with longer average session durations are substantially more likely to convert. 
+* The strong positive association suggests that longer sessions generally reflect meaningful engagement rather than confusion or inefficient navigation.
+
+#### Insight
+* Session duration is a valid engagement signal in this context and can be used to diagnose early disengagement risk.
 
 <br> 
 <br> 
+
+## Conversion Rate Distribution
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+# Histogram with counts on bars
+ggplot(user_data, aes(x = `GoalConversionRate`)) +
+  geom_histogram(binwidth = 0.1, 
+                 fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,1,by=0.1))+
+  geom_text(
+    stat = "bin", 
+    binwidth = 0.1,
+    aes(label = ..count..), 
+    vjust = -0.5,
+    color = "black"
+  ) +
+  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Number of Users") +
+  theme_ux
+```
+</details>
+
+```{r echo=FALSE}
+# Histogram with counts on bars
+ggplot(user_data, aes(x = `GoalConversionRate`)) +
+  geom_histogram(binwidth = 0.1, 
+                 fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks=seq(0,1,by=0.1))+
+  geom_text(
+    stat = "bin", 
+    binwidth = 0.1,
+    aes(label = ..count..), 
+    vjust = -0.5,
+    color = "black"
+  ) +
+  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Number of Users") +
+  theme_ux
+```
+
+```{r echo = FALSE}
+ZeroConversionPercent = nrow(
+  user_data[
+    (user_data$GoalConversionRate)==0,]
+    )/
+    length(is.na(user_data$GoalConversionRate))*
+    100
+
+OneConversionPercent = nrow(
+    user_data[
+      (user_data$GoalConversionRate)==1,]
+    )/
+    length(is.na(user_data$GoalConversionRate))*
+    100
+
+```
+
+
+#### Interpretation
+* A large proportion of users (~`r round(ZeroConversionPercent,1)`%) never convert, while a meaningful consistently reaches the goal behavior (~`r round(OneConversionPercent,1)`) always conduct the goal behavior. 
+
+* This polarized distribution mirrors engagement patterns, reinforcing the presence of distinct user trajectories.
+
+</br>
+</br>
+
+
+### Which Metrics Matter for Conversion?
+<details>
+<summary>Show code for data preparation</summary>
+```{r}
+cor_mat <- cor(
+  user_data %>%
+    select(GoalConversionRate, Sessions, `Avg.SessionDuration.seconds.`, BounceRate)
+)
+
+# Rename variables for display
+colnames(cor_mat) <- rownames(cor_mat) <- c(
+  "Conversion Rate",
+  "Session Count",
+  "Session Duration",
+  "Bounce Rate"
+)
+```
+</details>
+
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+corrplot(cor_mat,
+         tl.col = "black", 
+         type = "upper",
+         tl.srt = 45,            
+         tl.cex = 0.9,
+         number.cex = 0.8,
+         addCoef.col = "grey20",
+         mar = c(0, 0, 2, 0),
+         title = "Correlation Between Engagement Metrics")
+
+  
+```
+</details>
+
+```{r echo=FALSE}
+corrplot(cor_mat,
+         tl.col = "black", 
+         type = "upper",
+         tl.srt = 45,            
+         tl.cex = 0.9,
+         number.cex = 0.8,
+         addCoef.col = "grey20",
+         mar = c(0, 0, 2, 0),
+         title = "Correlation Between Engagement Metrics")
+```
+
+```{r}
+cor_duration = cor_mat['Conversion Rate','Session Duration']
+cor_bounce = cor_mat['Conversion Rate','Bounce Rate']
+cor_session = cor_mat['Conversion Rate','Session Count']
+```
+
+#### Interpretation
+* Conversion is strongly associated with session duration (r = `r round(cor_duration, 2)`).
+* Bounce rate also shows a meaningful negative relationship with conversion (r= `r round(cor_bounce, 2)`.
+* Number of sessions exhibits a weaker association (r = `r round(cor_session, 2)`).
+
+#### Insight
+* Combined with the earlier analysis that most sessions lasted less than 10 seconds, biggest opportunity for improving conversion behavior likely lies in improving the early session experience (which can lower bounce rate and lengthen session duration). Thus, the rest of the report focuses on early disengagement metrics, bounce rate.
+
+
+</br>
+</br>
+
+# Step 3. Diagnosing Early Disengagement
 
 ## Bounce Behavior Overview
 <details>
@@ -247,18 +446,18 @@ ggplot(user_data, aes(x = `BounceRate`)) +
   theme_ux
 ```
 
-### Interpretation
-* The bounce rate distribution is highly polarized: ~65.8% of users never bounce, ~14.8% of users always bounce. 
-* No bouncing of majoraity users do not suggest poor overall UX.
-* Instead, it points to segmented behavior that may stem from
+#### Interpretation
+* The bounce rate distribution is highly polarized: most users (~65.8%) never bounce, yet a notable minority (~14.8%) always bounce. 
+* No bouncing of majority users do not suggest poor overall UX.
+* Instead, it suggests that early experience that may be segmented by:
 <ol>
   <li>quality or relevance issues on specific landing pages</li>
   <li>mismatched traffic sources bringing in less interested or less relevant visitors</li>
   <li>differences in user segments (e.g., interest). </li>
 </ol>
 
-### Recommendation
-* Focus further analysis on landing pages, referral sources, and affinity group for high bounce rates.
+#### Recommendations
+* Further analysis should focus on landing pages, referral sources, and affinity group for high bounce rates.
 
 <br> 
 <br> 
@@ -347,12 +546,12 @@ ggplot(page_data) +
 ```
 
 
-### Interpretation
-* Bounce rates vary substantially by page, but are not strongly associated with load time. 
-* This suggests content relevance or expectation mismatch as the primary issues, rather than performance.
+#### Interpretation
+* Bounce rates vary substantially by page, but are not strongly associated with page load time. 
+* This suggests content relevance, expectation mismatch, or friction (other than slow loading time) as the primary issues.
 
-### Recommendation
-* Conduct qualitative evaluation (e.g., usability testing or heuristic review) on high-traffic, high-bounce landing pages (i.e., "Say" and "Finishing" pages.)
+#### Recommendations
+* Conduct qualitative evaluation (e.g., usability testing) on high-traffic, high-bounce landing pages (i.e., "Say" and "Finishing" pages.)
 
 <br> 
 <br> 
@@ -414,13 +613,13 @@ ggplot(referrer_data) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-### Interpretation
+#### Interpretation
 * Significant traffic comes from site.com, with higher bounce rate than other sources. 
 * Visitors from site.com may have misaligned expectations.
 
-### Recommendation
-* Review referral site content to ensure alignment with website offerings.
-* Consider reallocating acquisition efforts toward higher-engagement sources (e.g., Facebook, Outlook).
+#### Recommendations
+* Review referral messaging and acquisition strategies to better align incoming traffic with on-site content.
+* May consider reallocating acquisition efforts toward higher-engagement sources (e.g., Facebook, Outlook).
 
 <br> 
 <br> 
@@ -476,18 +675,20 @@ ggplot(affinity_summarydata) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-### Interpretation
+#### Interpretation
 * Bounce rates are consistent across affinity groups.
-* Indicates that the issue is not segment-sepcific, but rather linked to content and source interactions across multiple affinity groups.
+* This suggests disengagement is not driven primarily by audience segmentation.
 
-### Recommendation
-Investigate nteraction between landing page and referral source to test whether some pages are problematic particularly for specific traffic sources.
+#### Recommendations
+Investigate interaction between landing page and referral source to test whether some pages are problematic particularly for specific traffic sources.
 
 <br>
 <br>
 
 # Conclusion
 
-* Key UX risks stem from early-session friction and expectation mismatch.
+* Key UX risks stem from early-session friction, content relevance, and expectation mismatch.
 
-* Actionable improvements include refining high-bounce landing pages, aligning referral sources, and using the 3-minute threshold to design more meaningful engagement metrics. 
+* Actionable improvements include refining high-bounce landing pages, aligning referral sources.
+
+* Session duration, particularly the ~3-minute threshold, could provide a meaningful benchmark for defining engaged users and evaluating UX interventions. Yet, this warrants further investigation.

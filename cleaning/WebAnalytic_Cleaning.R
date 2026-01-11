@@ -1,76 +1,190 @@
+## Purpose
+# This document prepares raw web analytics data for exploratory and descriptive analysis.
+# The goal is to clean and structure datasets at appropriate levels of analysis while documenting key assumptions and exclusions.
+
+## Summary of data preparation
+#- Each data is structured by different unit of analysis (user, session duration, page, referrer, affinity group).
+#- Rows with missing identifiers or implausible tracking values were excluded.
+#- Hierarchical affinity categories were split into interpretable features, and aggregated based on the broadest category for simpler visualization.
 
 ## -------------------------------
 ## 1. Open libraries
 ## -------------------------------
+
 library(readxl)
 library(dplyr)
 library(tidyr)
+
 
 ## -------------------------------
 ## 2. Import data
 ## -------------------------------
 
-## Import Data <input type=button class=hideshow></input>
-{r import include=TRUE, results = FALSE}
+# Excel file contains multiple sheets exported from web analytics platform
+data_path = "../data/raw_data/data_web_analytic.xlsx"
+
+sheet_names <- excel_sheets(data_path)
+
+# Read all sheets into a named list for traceability
+raw_tables <- lapply(sheet_names, function(s) {
+  read_excel(data_path, sheet = s)
+})
+names(raw_tables) <- sheet_names
+
+## --------------------------------------
+## 3. Construct and Clean analytic tables
+## --------------------------------------
+
+# 3.1 Make a User-level data
+user_data <- as.data.frame(raw_tables[[2]])
+
+# Replace space with _ in variable names
+names(user_data) <- gsub(" ", "", names(user_data))
+
+# Check for duplicate user IDs
+any(duplicated(user_data$ClientId))
+
+# Check missingness
+colSums(is.na(user_data))
 
 
-fname = "/Users/daeunhan/Box Sync/UIUC (daeuneh2@illinois.edu)/Career/UXstudy/UXResearchAtScale/Assignment/web_data_.xlsx"
+# 3.2 Make a session-duration-level engagement data
+engagement_data <- as.data.frame(raw_tables[[3]]) %>%
+  # Remove rows with missing session duration, which likely indicate logging errors
+  filter(!is.na(`Session Duration...1`)) %>%
+  # Remove columns that contains variable explanations (only keep the columns with actual data)
+  select(c(1:3))
 
-#get the list of sheets
-sheets <-readxl::excel_sheets(fname)
+# Change variable name Session_Duration...1 as SessionDuration
+names(engagement_data)[1]<- 'SessionDuration'
 
-#read the sheets into a list of table
-tibble <- lapply(sheets, function(x) readxl::read_excel(fname, sheet = x))
-
-#Make a User data table
-Userdata <- as.data.frame(tibble[[2]])
-
-#Make an Engagement data table
-engdata <- as.data.frame(tibble[[3]])
-
-engdata <- engdata[-c(8),c(1:4)] # delete row 8 where session duration is NA
-
-#Make a page data table
-pagedata <- as.data.frame(tibble[[5]])
-pagedata <- pagedata[c(-11),] # delete row 11 where Page is NA
+# Check missingness
+colSums(is.na(engagement_data))
 
 
-#Make a referrer data table
-referdata <- as.data.frame(tibble[[10]])
-referdata  <- referdata[c(-11), ] # delete row 11 where Source is NA
+# 3.3 Make a page-level interaction data
+page_data <- as.data.frame(raw_tables[[5]]) %>%
+  # Remove rows with missing page identifiers
+  filter(!is.na(Page))
+
+# Replace space with _ in variable names
+names(page_data) <- gsub(" ", "", names(page_data))
+
+# Check missingness
+colSums(is.na(page_data))
 
 
-#Make an affinity data table
-affinitydata <- as.data.frame(tibble[[4]])
-affinitydata  <- affinitydata[c(-102), ] # delete row 102 where Affinity Category is NA
+# 3.4 Make a referrer data table
+referrer_data <- as.data.frame(raw_tables[[10]]) %>%
+  filter(!is.na(Source))
 
-# separate affinity column into three columns
-affinitydata <- affinitydata %>%
-  separate(`Affinity Category (reach)`, into = c("Aff1", "Aff2", "Aff3"), sep = "/", fill = "right")
-## Preview of data ### Preveiw User data <input type=button class=hideshow></input>
-{r include=TRUE}
-head(Userdata)
-### Preveiw Engagement data <input type=button class=hideshow></input>
-{r include=TRUE}
-head(engdata)
-### Preveiw Page data <input type=button class=hideshow></input>
-{r include=TRUE}
-head(pagedata)
-### Preview of Referral data <input type=button class=hideshow></input>
-{r include=TRUE}
-head(referdata)
-### Preveiw Affinity data <input type=button class=hideshow></input>
-{r include=TRUE}
-head(aaffinitydata)
+# Replace space with _ in variable names
+names(referrer_data) <- gsub(" ", "", names(referrer_data))
 
+# Check missingness
+colSums(is.na(referrer_data))
+
+
+# 3.5 Make an affinity data table (hierarchical)
+affinity_data <- as.data.frame(raw_tables[[4]]) %>%
+  filter(!is.na(`Affinity Category (reach)`))
+
+# Replace space with _ in variable names
+names(affinity_data) <- gsub(" ", "", names(affinity_data))
+
+# Check missingness
+colSums(is.na(affinity_data))
+# Note: Not all affinity has three levels. Some has only two levels.
+
+## --------------------------------------
+## 4. Feature Engineering
+## --------------------------------------
+
+# 4.1 For engagement data
+
+engagement_data <- engagement_data %>% 
+  mutate(
+    # Calculate average page views per session
+    AvgViewPerSess = Pageviews/Sessions,
+    # calculate percentage of number of sessions
+    Sessions_Percent = Sessions/sum(Sessions) * 100, )
+
+
+
+# 4.2 For affinity data
+# Split hierarchical affinity categories into separate features
+affinity_data <- affinity_data %>%
+    separate(
+    `AffinityCategory(reach)`,
+    into = c("AffinityLevel_1", "AffinityLevel_2", "AffinityLevel_3"),
+    sep = "/",
+    fill = "right"
+  ) 
+
+# Aggregate data by affinity level 1 (the broadest affinity group) for simplicity in visualization
 affinity_summarydata <- affinity_data %>%
-  +   group_by(affinity_level_1) %>%
-  +   summarise(
-    +     total_sessions = sum(Sessions, na.rm = TRUE),
-    +     bounce_rate = weighted.mean(`Bounce.Rate`, Sessions, na.rm = TRUE)
-    +   )
-> write.csv(
-  +   affinity_summarydata,
-  +   "data/processed/affinity_summarydata_clean.csv",
-  +   row.names = FALSE
-  + )s
+     group_by(AffinityLevel_1) %>%
+     summarise(
+         total_sessions = sum(Sessions, na.rm = TRUE),
+         bounce_rate = weighted.mean(`BounceRate`, Sessions, na.rm = TRUE)
+         )
+# Note: 
+# Sessions were summed to reflect the total user engagement for each affinity group.
+# Bounce rate was calculated as session-weighted averages to prevent distortion from low-traffic pages
+
+
+
+## --------------------------------------
+## 5. Preview of data
+## --------------------------------------
+
+# Preview User data 
+head(user_data)
+
+# Preview Engagement data 
+head(engagement_data)
+
+# Preview Page data 
+head(page_data)
+
+# Preview of Referral data 
+head(referrer_data)
+
+### Preview of Affinity data 
+head(affinity_data)
+
+
+
+## --------------------------------------
+## 6. Save data
+## --------------------------------------
+
+write.csv(
+  user_data,
+  "../data/processed_data/user_data_clean.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  engagement_data,
+  "../data/processed_data/engagement_data_clean.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  page_data,
+  "../data/processed_data/page_data_clean.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  referrer_data,
+  "../data/processed_data/referrer_data_clean.csv",
+  row.names = FALSE
+)
+
+write.csv(
+     affinity_summarydata,
+     "../data/processed_data/affinity_summarydata_clean.csv",
+     row.names = FALSE
+   )
