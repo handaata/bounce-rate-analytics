@@ -1,9 +1,14 @@
 ---
 title: "Analysis_Web_Analytic"
 author: "Dawn Han"
-date: "2026-01-03"
+date: "2026-01-12"
 output: html_document
-
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_dir = "../docs"
+    )
+  })
 ---
 
 ```{r global-options, include=FALSE}
@@ -25,25 +30,30 @@ body {
 
 # Executive Summary
 
-#### Goal
-Evaluate current website performance by examining engagement, bounce behavior, and conversion outcomes, and identify actionable UX improvement opportunities.
+### Goal
+Evaluate the user engagement ont the website, where and why disengagement occurs, and surface actionable UX opportunities that can meaningfully improve conversion outcomes.
 
-#### Data
-Aggregated web analytics data including number of sessions, session duraion, page-level performance, referral sources, and affinity categories.
+### Data
+Aggregated web analytics data collected between 2017-06-01 and 2017-10-11, including user-level,  page-level, session-duration, landing page-level, referral source-level metrics such as number of sessions, session duration, bounce behavior, conversion.
 
-#### Key Findings
-- Over 30% of sessions end within the first 10 seconds, but sessions exceeding ~3 minutes show disproportionately high engagement (more page views). 
-- Conversion and bounce behaviors are highly polarized, suggesting distinct user journeys rather than uniformly poor UX. 
-- Bounce rate varies substantially by landing page and traffic source, but not by affinity category.
+### Key Findings
+- **Early disengagement is prevalent**: Over 30% of sessions end within the first 10 seconds, indicating substantial friction or expectation mismatch at session entry.
 
-#### UX Implications
-- Early-session friction, content relevance, and expectation mismatch are the primary risks. 
-- Improvements should prioritize landing page optimization (particularly for "say" and "finishing" pages) and referral alignment, rather than audience targeting.
+- **Engagement is polarized**: Session duration, bounce behavior, and conversion outcomes show highly polarized distributions, suggesting distinct user journeys rather than uniformly weak UX.
 
+- **A critical engagement threshold exists**: Sessions lasting longer than approximately 3 minutes exhibit disproportionately higher engagement and conversion likelihood.
 
+- **Bounce behavior varies by landing page and referral source**, but are largely consistent across affinity categories.
 
-#### Data Quality & Measurement Decisions
-- Before analysis, several decisions were made to ensure clarity and analytical validity:
+### UX Implications
+- The primary UX risk lies in **early-session experience**, which can drive engagement and conversion.
+
+- Improving **landing page relevance and referral alignment** is likely to yield higher impact than audience targeting or personalization based on affinity categories.
+
+- Preventing early disengagement represents a **high-leverage opportunity** for increasing the number of users who convert at least once.
+
+### Data Quality & Measurement Decisions
+Before analysis, several decisions were made to ensure clarity and analytical validity:
   
 - Sessions with missing or invalid duration values were removed, as these likely reflect logging errors.
 
@@ -55,14 +65,12 @@ Aggregated web analytics data including number of sessions, session duraion, pag
 
 # Step 1: Setup
 
-### Libraries Loaded: gggplot2, dplyr
+### Libraries Loaded: gggplot2, dplyr, gtsummary
 <details> <summary>Show code</summary>
 ```{r results = FALSE}
 library(dplyr)
 library(ggplot2)
-library(corrplot)
-library(interactions)
-
+library(gtsummary)
 ```
 </details>
 
@@ -100,12 +108,12 @@ theme_ux <- theme_minimal(base_size = 14) +
 <br> 
 <br> 
 
-# Step 2: Understanding Engagement Patterns
-## Session Duration Overview
+# Step 2: Evaluating User Engagement
+## 2.1 Session Duration Overview
 
 <details> <summary>Show code for data preparation </summary>
 ```{r }  
-
+# Prepare data for visualizaion
 
 engagement_data <- engagement_data %>% 
   mutate(
@@ -211,80 +219,46 @@ ggplot(engagement_data, aes(x = SessionDuration)) +
   )
 ```
 
-#### Interpretation
+```{r include=FALSE}
+percent_10sec <- as.numeric(engagement_data$Sessions_Percent[1])
+percent_30min <- as.numeric(engagement_data$Sessions_Percent[6])
+minimum_timeperpage <- as.numeric(min(10*60/engagement_data$AvgViewPerSess[6], 
+                           30*60/engagement_data$AvgViewPerSess[7]))
+```
 
-* Over 30% of sessions end within 10 seconds, indicating a substantial early-exit segment. 
-* Among sessions that persist beyond the initial drop-off, 10–30 minutes is the most common duration. 
-* Once sessions lasted longer than 3 minutes, page views increase disproportionately. 
-* This sugggest a threshold effect: users either disengage almost immediately or become highly engaged.
+#### Interpretation
+* Over `r round(percent_10sec, -1)`% of sessions **end within 10 seconds**, indicating a substantial early-exit users. 
+* Among sessions that persist beyond the initial drop-off, **10–30 minutes** is the most common duration (~`r round(percent_30min, -1)`%). 
+* Once sessions lasted longer than **3 minutes**, page views sharply increased. 
+* Overall, the pattern suggests a **threshold effect**: users either disengage almost immediately or become highly engaged once past some point.
 
  
-#### Insights
+#### Insightss
+* The ~3-minute threshold could guide design of early-engagement metrics. 
+* UX improvements aimed at increasing deep engagement are unlikely to succeed unless early exits are first reduced.
+* Consequently, subsequent analyses focus on early disengagement behaviors.
 
-* The ~3-minute threshold could guide design of engagement metrics. 
 
-* Friction and expectation mismatch in the first moments of the session are likely contributors of early exit, but further analyses of bounce rate are warranted for more accurate recommendations. 
+#### Notes
+Although longer sessions with more page views could theoretically reflect inefficient navigation rather than engagement, this interpretation is unlikely:
 
-#### Limitations
-* Using the 3-minute threshold as engagement index needs further validation because page view might not be purely indicate of engagement, but instead, ineffective website usage. It will be valuable to examine whether greater page view leads to higher conversion rate. However, this can not be tested in the current data set.  
+* For sessions longer than 10 minutes,the average time per page (>= `r round(minimum_timeperpage,1)` secs.) falls within a reasonable engagement range.
 
-* Relatedly, the longer session may mean ineffective usage. To rule out this possibility, upcoming analysis show whether session duration predicts conversion.
+* Session duration is strongly correlated with conversion (r = 0.87), reinforcing its relevance as an engagement indicator.
 
-</br>
-</br>
-
-### Relationship Between Session Duration and Conversion Rate
-<details> <summary>Show code for data preparation </summary>
-```{r }  
-# change units from seconds to minutes 
-user_data <- user_data %>%
-  mutate(Avg.SessionDuration.minutes. = 
-           `Avg.SessionDuration.seconds.`/60)
-```
-</details>
-
-<details> <summary>Show code for plot </summary>
-```{r eval=FALSE}
-# Scatter plot
-ggplot(user_data, 
-       aes(x=`Avg.SessionDuration.minutes.`,
-           y=GoalConversionRate)) +
-  geom_point(color = 'skyblue3', alpha = 0.7) +
-  scale_x_continuous(breaks=seq(0,100,by=10)) +
-  labs(title = "Users with Longer Sessions Reach the Conversion Goal More Often", x = "Avg. Session Duration (minutes)", y = "Conversion Rate") +
-  theme_ux
-```
-</details>
-
-```{r echo=FALSE}
-# Scatter plot
-ggplot(user_data, 
-       aes(x=`Avg.SessionDuration.minutes.`,
-           y=GoalConversionRate)) +
-  geom_point(color = 'skyblue3', alpha = 0.7) +
-  scale_x_continuous(breaks=seq(0,100,by=10)) +
-  labs(title = "Users with Longer Sessions Reach the Conversion Goal More Often", x = "Avg. Session Duration (minutes)", y = "Conversion Rate") +
-  theme_ux
-```
-
-#### Interpretation
-* Users with longer average session durations are substantially more likely to convert. 
-* The strong positive association suggests that longer sessions generally reflect meaningful engagement rather than confusion or inefficient navigation.
-
-#### Insight
-* Session duration is a valid engagement signal in this context and can be used to diagnose early disengagement risk.
+While it would be valuable to further test whether page views independently predict conversion, this could not be evaluated with the available data.
 
 <br> 
 <br> 
 
-## Conversion Rate Distribution
+
+## 2.2 Bounce Behavior Overview
 <details>
 <summary>Show code for the plot</summary>
 ```{r eval=FALSE}
 # Histogram with counts on bars
-ggplot(user_data, aes(x = `GoalConversionRate`)) +
-  geom_histogram(binwidth = 0.1, 
-                 fill = "skyblue3", alpha = 0.7) +
+ggplot(user_data, aes(x = `BounceRate`)) +
+  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
   scale_x_continuous(breaks=seq(0,1,by=0.1))+
   geom_text(
     stat = "bin", 
@@ -293,16 +267,15 @@ ggplot(user_data, aes(x = `GoalConversionRate`)) +
     vjust = -0.5,
     color = "black"
   ) +
-  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Number of Users") +
+  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
   theme_ux
 ```
 </details>
 
 ```{r echo=FALSE}
 # Histogram with counts on bars
-ggplot(user_data, aes(x = `GoalConversionRate`)) +
-  geom_histogram(binwidth = 0.1, 
-                 fill = "skyblue3", alpha = 0.7) +
+ggplot(user_data, aes(x = `BounceRate`)) +
+  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
   scale_x_continuous(breaks=seq(0,1,by=0.1))+
   geom_text(
     stat = "bin", 
@@ -311,7 +284,60 @@ ggplot(user_data, aes(x = `GoalConversionRate`)) +
     vjust = -0.5,
     color = "black"
   ) +
-  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Number of Users") +
+  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
+  theme_ux
+```
+
+```{r echo=FALSE}
+percent_0bounce <-sum(user_data$BounceRate == 0)/length(is.na(user_data$BounceRate))*100
+
+percent_1bounce <-sum(user_data$BounceRate == 1)/length(is.na(user_data$BounceRate))*100
+```
+
+
+#### Interpretation
+* The bounce rate distribution is highly polarized: </br>
+- most users (~`r round(percent_0bounce,1)`%) never bounce.
+- A notable minority (~`r round(percent_1bounce,1)`%) always bounce. 
+* This pattern suggests that bounce behavior reflects systematic differences in early experience, rather than random disengagement.
+
+#### Insights
+* No bouncing of majority users argue against a globally poor UX.
+* Instead, early experience likely stems from:
+<ol>
+  <li>Quality or relevance issues on specific landing pages</li>
+  <li>Misaligned referral sources bringing low-intent traffic</li>
+  <li>Context-specific user journeys rather than broad audience differences </li>
+</ol>
+
+* Further analysis should focus on how landing pages, referral sources, and affinity group predicts early disengagement.
+
+<br> 
+<br> 
+
+# Step 3. Confirm Business Impact: How Addressing Early Disengagement Is Important For Conversion
+## Why Early Disengagement Matters for Conversion
+## 3.1 Conversion Rate Distribution
+<details>
+<summary>Show code for the plot</summary>
+```{r eval=FALSE}
+
+# Density Plot of Conversion Rate (User-level data)
+ggplot(user_data, aes(x = `GoalConversionRate`)) +
+  geom_density(fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1))+
+  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Density") +
+  theme_ux
+
+```
+</details>
+
+```{r echo=FALSE}
+# Density Plot of Conversion Rate (User-level data)
+ggplot(user_data, aes(x = `GoalConversionRate`)) +
+  geom_density(fill = "skyblue3", alpha = 0.7) +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1))+
+  labs(title = "Conversion Rate Distribution", x = "Conversion rate", y = "Density") +
   theme_ux
 ```
 
@@ -334,135 +360,206 @@ OneConversionPercent = nrow(
 
 
 #### Interpretation
-* A large proportion of users (~`r round(ZeroConversionPercent,1)`%) never convert, while a meaningful consistently reaches the goal behavior (~`r round(OneConversionPercent,1)`) always conduct the goal behavior. 
+* Conversion outcomes are strongly polarized:
+ - ~`r round(ZeroConversionPercent,1)`% of users never convert.
+ - ~`r round(OneConversionPercent,1)`% of users consistently convert. 
 
-* This polarized distribution mirrors engagement patterns, reinforcing the presence of distinct user trajectories.
+#### Insights
+* Good business opportunities lies in shifting users from zero conversion to at least one conversion.
+* This polarized distribution of conversion mirrors engagement patterns, suggesting that early disengagement may be a key driver of zero conversion.
+
+* Statistical modeling is used to test and quantify this relationship.
+
 
 </br>
 </br>
 
+## 3.2 Assessing The Impact of Early Disengagement On Zero-Conversion
+**Note:** Early disengagement is defined as exiting before 3 minutes, based on prior session duration analysis.
 
-### Which Metrics Matter for Conversion?
+### Visual Inspection of Variables
 <details>
-<summary>Show code for data preparation</summary>
-```{r}
-cor_mat <- cor(
-  user_data %>%
-    select(GoalConversionRate, Sessions, `Avg.SessionDuration.seconds.`, BounceRate)
-)
+<summary>Show code and plots for distribution check</summary>
+```{r }
+ggplot(user_data, aes(x = GoalConversionRate)) +
+  geom_histogram(bins = 50) +
+  labs(title = "Distribution of Conversion Rate (log-scaled x-axis)") +
+  theme_ux
 
-# Rename variables for display
-colnames(cor_mat) <- rownames(cor_mat) <- c(
-  "Conversion Rate",
-  "Session Count",
-  "Session Duration",
-  "Bounce Rate"
-)
+ggplot(user_data, aes(x = Sessions)) +
+  geom_histogram(bins = 50) +
+  scale_x_continuous(trans = "log10") + # for visualizing skewed data
+  labs(title = "Distribution of Total Sessions (log-scaled x-axis)") +
+  theme_ux
+
+
+ggplot(user_data, aes(x = Avg.SessionDuration.seconds.)) +
+  geom_histogram(bins = 50) +
+  labs(title = "Distribution of Average Session Duration in Seconds") +
+  theme_ux
+
+
+ggplot(user_data, aes(x = BounceRate)) +
+  geom_histogram(bins = 50) +
+  labs(title = "Distribution of BounceRate") +
+  theme_ux
+
+
 ```
 </details>
-
-<details>
-<summary>Show code for the plot</summary>
-```{r eval=FALSE}
-corrplot(cor_mat,
-         tl.col = "black", 
-         type = "upper",
-         tl.srt = 45,            
-         tl.cex = 0.9,
-         number.cex = 0.8,
-         addCoef.col = "grey20",
-         mar = c(0, 0, 2, 0),
-         title = "Correlation Between Engagement Metrics")
 
   
-```
-</details>
-
-```{r echo=FALSE}
-corrplot(cor_mat,
-         tl.col = "black", 
-         type = "upper",
-         tl.srt = 45,            
-         tl.cex = 0.9,
-         number.cex = 0.8,
-         addCoef.col = "grey20",
-         mar = c(0, 0, 2, 0),
-         title = "Correlation Between Engagement Metrics")
-```
-
-```{r}
-cor_duration = cor_mat['Conversion Rate','Session Duration']
-cor_bounce = cor_mat['Conversion Rate','Bounce Rate']
-cor_session = cor_mat['Conversion Rate','Session Count']
-```
-
-#### Interpretation
-* Conversion is strongly associated with session duration (r = `r round(cor_duration, 2)`).
-* Bounce rate also shows a meaningful negative relationship with conversion (r= `r round(cor_bounce, 2)`.
-* Number of sessions exhibits a weaker association (r = `r round(cor_session, 2)`).
-
-#### Insight
-* Combined with the earlier analysis that most sessions lasted less than 10 seconds, biggest opportunity for improving conversion behavior likely lies in improving the early session experience (which can lower bounce rate and lengthen session duration). Thus, the rest of the report focuses on early disengagement metrics, bounce rate.
-
-
-</br>
-</br>
-
-# Step 3. Diagnosing Early Disengagement
-
-## Bounce Behavior Overview
+### Outlier Handling: Winsorize at the 1st and 99th percentiles
 <details>
-<summary>Show code for the plot</summary>
-```{r eval=FALSE}
-# Histogram with counts on bars
-ggplot(user_data, aes(x = `BounceRate`)) +
-  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
-  scale_x_continuous(breaks=seq(0,1,by=0.1))+
-  geom_text(
-    stat = "bin", 
-    binwidth = 0.1,
-    aes(label = ..count..), 
-    vjust = -0.5,
-    color = "black"
-  ) +
-  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
-  theme_ux
+<summary>Show code for outlier handling</summary>
+```{r echo=FALSE}
+# Winsorize function
+winsorize <- function(x, probs = c(0.01, 0.99)) {
+  q <- quantile(x, probs = probs, na.rm = TRUE)
+  x[x < q[1]] <- q[1]
+  x[x > q[2]] <- q[2]
+  return(x)
+}
+
+user_data <- user_data %>%
+  mutate(
+    Avg.SessionDuration.seconds._w = winsorize(Avg.SessionDuration.seconds.),
+    Sessions_w = winsorize(Sessions)
+  )
+
 ```
 </details>
 
-```{r echo=FALSE}
-# Histogram with counts on bars
-ggplot(user_data, aes(x = `BounceRate`)) +
-  geom_histogram(binwidth = 0.1,  fill = "skyblue3", alpha = 0.7) +
-  scale_x_continuous(breaks=seq(0,1,by=0.1))+
-  geom_text(
-    stat = "bin", 
-    binwidth = 0.1,
-    aes(label = ..count..), 
-    vjust = -0.5,
-    color = "black"
-  ) +
-  labs(title = "Bounce Rate Distribution", x = "Bounce rate", y = "Number of Users") +
-  theme_ux
+### Data transformation
+<details>
+<summary>Show code for predictor and outcome transformation </summary>
+```{r}
+
+user_data <- user_data %>%
+  mutate(
+    # Log transformation of right skewed continuous variables
+    log_Avg.SessionDuration.seconds. = log1p(Avg.SessionDuration.seconds._w),   # log(1 + x)  to handle zero duration among some users
+    log_Sessions = log(Sessions_w),
+    
+    # creating binary outcome for conversion rate
+    ConversionBinary = ifelse(GoalConversionRate > 0, 1, 0),
+    
+    
+    # creating binary predictor for Early Disengagement using Duration
+    EarlyExit = ifelse(Avg.SessionDuration.seconds. < 180, 1, 0)
+  )
+
+
+```
+</details>
+
+**Log transformation of session duration and number of session:**
+It reduces regression assumption violation (heteroskedasticity, nonlinearity) and reduces extreme values’ influence and makes relationships more linear.
+
+**Dichotomizing into "never convert" or "convert at lease once":**
+The conversion rate peaks around 0 and 1, suggesting separate processes involved in making people convert at least for once and making people continue to convert. 
+
+Using the raw multimodal outcome in linear regression can lead to misleading conclusion. 
+As majority of users show 0 conversion, it can be more impactful to change 0 conversion to some number. Thus, how much an early engagement can mitigate this binary outcome is evaluated. 
+
+**Bounce Rate was not transformed because...**
+For logistic regression, bounded continuous predictors only need transformation if they are heavily skewed and distort linearity in relation to log-odds. 
+
+
+### Statistical Test: Predicting Zero_Conversion with Early Disengagement
+**Rationale For Model Choice:**</br>
+Logistic regression is used as outcome is binary, predictors are continuous or binary, and there are enough (>50) data points
+
+<details>
+<summary>Show code for model </summary>
+```{r }
+logit_model <- glm(ConversionBinary ~ EarlyExit + log_Sessions + BounceRate,
+                   data = user_data, family = binomial)
+```
+</details>
+
+```{r echo = FALSE}
+tbl_regression(logit_model , 
+               label = list(
+                 EarlyExit = "Early Disengagement",
+                 log_Sessions = "# of Sessions (log)",
+                 BounceRate = 'Bounce Rate')
+               )
 ```
 
+
+<details>
+<summary>Show code for computing percentage change </summary>
+```{r}
+# R code for Computing Probabilities of Change For Certain Unit Change In Predictors
+
+# Define baseline: median values of predictors and Early Exit
+baseline <- data.frame(
+  EarlyExit = 1,
+  log_Sessions = log(median(user_data$Sessions_w)),
+  BounceRate = median(user_data$BounceRate)
+)
+
+# Predicted probability at baseline
+baseline_prob <- predict(logit_model, baseline, type = "response")
+baseline_prob
+
+
+# If Do Not Exit Early
+ExitLate <- baseline
+ExitLate$EarlyExit <- 0
+
+pred_ExitLate <- predict(logit_model, ExitLate, type = "response")
+pred_ExitLate
+
+
+# If increase session number by 1
+SessionIncrease <- baseline
+SessionIncrease$log_Sessions <- log(median(user_data$Sessions_w) + 1)
+
+pred_SessionIncrease <- predict(logit_model, SessionIncrease, type = "response")
+pred_SessionIncrease
+
+# If increase bounce rate by 0.1
+BounceRateIncrease <- baseline
+BounceRateIncrease$BounceRate <- median(user_data$BounceRate) + 0.1
+
+pred_BounceRateIncrease <- predict(logit_model, BounceRateIncrease, type = "response")
+pred_BounceRateIncrease
+
+# Compute percentage of zero conversion users
+ZeroConversionPercent = nrow(
+  user_data[
+    (user_data$GoalConversionRate)==0,]
+    )/
+    length(is.na(user_data$GoalConversionRate))*
+    100
+
+
+```
+</details>
+
 #### Interpretation
-* The bounce rate distribution is highly polarized: most users (~65.8%) never bounce, yet a notable minority (~14.8%) always bounce. 
-* No bouncing of majority users do not suggest poor overall UX.
-* Instead, it suggests that early experience that may be segmented by:
-<ol>
-  <li>quality or relevance issues on specific landing pages</li>
-  <li>mismatched traffic sources bringing in less interested or less relevant visitors</li>
-  <li>differences in user segments (e.g., interest). </li>
-</ol>
+* After accounting for number of sessions and bounce rate:
+  - Staying beyond the 3 minutes is associated with a `r round((pred_ExitLate-baseline_prob)*100,1)` percentage-point increase in the probability of 
+  converting at least once.
+  - An additional session provides modest gains: `r round((pred_SessionIncrease-baseline_prob)*100,2)` percentage-point increase.
+  - Bounce rate increasing by 0.1 is associated with only a `r round((pred_BounceRateIncrease -baseline_prob)*100,2)` percentage-point increase.
 
-#### Recommendations
-* Further analysis should focus on landing pages, referral sources, and affinity group for high bounce rates.
+#### Insights
+* Preventing early exit represent a high-impact invertention point.
+* Given that (`r round(ZeroConversionPercent,2)`%) of users never convert, reducing early disengagement could plausibly shift a substantial fraction of users into at least one conversion. * These results quantitatively support prioritizing early-session UX improvements over later-stage optimizations.
 
-<br> 
-<br> 
+</br>
+</br>
 
-# Step 3. Testing The Hypothesis
+# Step 4. Identifying Sources of Early Disengagement
+
+**Note:** 
+
+* Analyses focus on bounce rate as the most direct available indicator of early disengagement.
+* Only descriptive assessments were conducted as no relevant data is available on individual or session levels.
+
 ## Hypothesis 1: Landing Page Issues
 <details>
 <summary>Show code for data preparation</summary>
@@ -547,16 +644,18 @@ ggplot(page_data) +
 
 
 #### Interpretation
-* Bounce rates vary substantially by page, but are not strongly associated with page load time. 
-* This suggests content relevance, expectation mismatch, or friction (other than slow loading time) as the primary issues.
+Bounce rates vary substantially by landing page.
+
+Bounce rate is not strongly associated with page load time, suggesting that performance issues are not the primary driver.
 
 #### Recommendations
-* Conduct qualitative evaluation (e.g., usability testing) on high-traffic, high-bounce landing pages (i.e., "Say" and "Finishing" pages.)
+* Conduct qualitative evaluation (e.g., usability testing, content review) of high-traffic, high-bounce landing pages (i.e., "Say" and "Finishing" pages.)
+* Focus on content clarity, expectation setting, and early interaction cues.
 
 <br> 
 <br> 
 
-# Hypothesis 2: Referral Source Mismatch
+## Hypothesis 2: Referral Source Mismatch
 <details>
 <summary>Show code for data preparation</summary>
 ```{r}
@@ -614,17 +713,17 @@ ggplot(referrer_data) +
 ```
 
 #### Interpretation
-* Significant traffic comes from site.com, with higher bounce rate than other sources. 
-* Visitors from site.com may have misaligned expectations.
+* Significant traffic comes from site.com, with high bounce rate. 
+* This pattern suggests potential misalignment between referral messaging and on-site content.
 
 #### Recommendations
-* Review referral messaging and acquisition strategies to better align incoming traffic with on-site content.
+* Review acquisition messaging and referral context for site.com.
 * May consider reallocating acquisition efforts toward higher-engagement sources (e.g., Facebook, Outlook).
 
 <br> 
 <br> 
 
-# Hypothesis 3: Varied User Experience Across Affinity Categories
+## Hypothesis 3: Varied User Experience Across Affinity Categories
 <details>
 <summary>Show code for data preparation</summary>
 ```{r }
@@ -676,19 +775,20 @@ ggplot(affinity_summarydata) +
 ```
 
 #### Interpretation
-* Bounce rates are consistent across affinity groups.
-* This suggests disengagement is not driven primarily by audience segmentation.
+* Bounce rates are largely consistent across affinity groups.
+* This suggests that disengagement is not driven primarily by audience segmentation.
 
 #### Recommendations
-Investigate interaction between landing page and referral source to test whether some pages are problematic particularly for specific traffic sources.
+Rather than targeting affinity groups directly, investigate interactions between landing pages and referral sources to identify context-specific breakdowns.
 
-<br>
-<br>
+</br>
 
 # Conclusion
 
-* Key UX risks stem from early-session friction, content relevance, and expectation mismatch.
+This analysis indicates that the primary UX risks are concentrated in the earliest moments of the user journey, driven by content relevance, expectation mismatch, and contextual misalignment rather than broad usability or audience issues.
 
-* Actionable improvements include refining high-bounce landing pages, aligning referral sources.
+The findings highlight early disengagement as a critical bottleneck with substantial business impact. Improving landing page clarity and referral alignment offers the most promising path to decrease bounce rate.
 
-* Session duration, particularly the ~3-minute threshold, could provide a meaningful benchmark for defining engaged users and evaluating UX interventions. Yet, this warrants further investigation.
+Finally, session duration—particularly the ~3-minute threshold—emerges as a potentially meaningful benchmark for defining engaged users and evaluating future UX interventions. While promising, this threshold should be validated in future analyses or experiments.
+
+

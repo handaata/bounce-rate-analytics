@@ -3,7 +3,7 @@ This project explores user engagement and bounce rates in web analytics using R 
 
 ## Project Structure
 
-- `raw_data/` – Original Excel file with 5 sheets containing raw session data.  
+- `raw_data/` – Original Excel file with 5 sheets containing raw data.  
 - `data/` – Cleaned and feature-engineered CSV datasets, each representing a different level of analysis:
   - user_data: metrics per user, including session counts, bounce rate, average session duration, and other engagement indicators
   - engagement_data: session durations categorized into meaningful time intervals  
